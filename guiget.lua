@@ -1,15 +1,63 @@
 local Players = game:GetService("Players")
-local SG = game:GetService("StarterGui")
 local CS = game:GetService("CollectionService")
 local TS = game:GetService("TweenService")
 local UIS = game:GetService("UserInputService")
 
-local function corner(p, r) Instance.new("UICorner", p).CornerRadius = r or UDim.new(0, 8) end
-local function stroke(p, c, t) local s = Instance.new("UIStroke", p); s.Color = c; s.Thickness = t or 1.5 end
+local lp = Players.LocalPlayer
+while not lp do
+    Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+    lp = Players.LocalPlayer
+end
+
+local function resolveGuiParent()
+    local okHui, hui = pcall(function()
+        return type(gethui) == "function" and gethui() or nil
+    end)
+    if okHui and hui then
+        return hui, "gethui"
+    end
+    local okCore, coreGui = pcall(function()
+        return game:GetService("CoreGui")
+    end)
+    if okCore and coreGui then
+        local probe = Instance.new("Folder")
+        local okParent = pcall(function()
+            probe.Parent = coreGui
+        end)
+        if okParent then
+            probe:Destroy()
+            return coreGui, "CoreGui"
+        end
+    end
+    return lp:WaitForChild("PlayerGui"), "PlayerGui"
+end
+
+local guiParent, parentKind = resolveGuiParent()
+
+for _, old in ipairs(guiParent:GetChildren()) do
+    if old:IsA("ScreenGui") and old.Name == "_GC" then
+        old:Destroy()
+    end
+end
+
+local INCLUDE_COREGUI = false
+
+local function corner(p, r)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = r or UDim.new(0, 8)
+    c.Parent = p
+end
+local function stroke(p, c, t)
+    local s = Instance.new("UIStroke")
+    s.Color = c
+    s.Thickness = t or 1.5
+    s.Parent = p
+end
 local function grad(p, c0, c1, rot)
-    local g = Instance.new("UIGradient", p)
-    g.Color = ColorSequence.new{ColorSequenceKeypoint.new(0,c0),ColorSequenceKeypoint.new(1,c1)}
+    local g = Instance.new("UIGradient")
+    g.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, c0), ColorSequenceKeypoint.new(1, c1)})
     g.Rotation = rot or 0
+    g.Parent = p
 end
 
 local sGui = Instance.new("ScreenGui")
@@ -117,16 +165,16 @@ codeBox.TextYAlignment = Enum.TextYAlignment.Top
 codeBox.MultiLine = true; codeBox.TextEditable = false
 codeBox.TextWrapped = false; codeBox.ClearTextOnFocus = false; codeBox.Parent = codeScrl
 
-sGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+sGui.Parent = guiParent
 
 local dragging, dragStart, startPos = false
 hdr.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
         dragging = true; dragStart = i.Position; startPos = win.Position
     end
 end)
 UIS.InputChanged:Connect(function(i)
-    if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+    if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
         local d = i.Position - dragStart
         win.Position = UDim2.new(
             startPos.X.Scale, startPos.X.Offset + d.X,
@@ -135,8 +183,14 @@ UIS.InputChanged:Connect(function(i)
     end
 end)
 UIS.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
 end)
+
+local function num(v)
+    return tostring(v)
+end
 
 local function sv(v)
     local t = typeof(v)
@@ -150,47 +204,44 @@ local function sv(v)
     elseif t == "boolean" then
         return v and "true" or "false"
     elseif t == "Color3" then
-        return ("Color3.fromRGB(%d,%d,%d)"):format(
-            math.round(v.R*255), math.round(v.G*255), math.round(v.B*255))
+        return ("Color3.new(%s,%s,%s)"):format(num(v.R), num(v.G), num(v.B))
     elseif t == "UDim2" then
-        return ("UDim2.new(%g,%d,%g,%d)"):format(
-            v.X.Scale, v.X.Offset, v.Y.Scale, v.Y.Offset)
+        return ("UDim2.new(%s,%d,%s,%d)"):format(
+            num(v.X.Scale), v.X.Offset, num(v.Y.Scale), v.Y.Offset)
     elseif t == "UDim" then
-        return ("UDim.new(%g,%d)"):format(v.Scale, v.Offset)
+        return ("UDim.new(%s,%d)"):format(num(v.Scale), v.Offset)
     elseif t == "Vector2" then
-        return ("Vector2.new(%g,%g)"):format(v.X, v.Y)
+        return ("Vector2.new(%s,%s)"):format(num(v.X), num(v.Y))
     elseif t == "Vector3" then
-        return ("Vector3.new(%g,%g,%g)"):format(v.X, v.Y, v.Z)
+        return ("Vector3.new(%s,%s,%s)"):format(num(v.X), num(v.Y), num(v.Z))
     elseif t == "Rect" then
-        return ("Rect.new(%g,%g,%g,%g)"):format(v.Min.X, v.Min.Y, v.Max.X, v.Max.Y)
+        return ("Rect.new(%s,%s,%s,%s)"):format(num(v.Min.X), num(v.Min.Y), num(v.Max.X), num(v.Max.Y))
     elseif t == "ColorSequence" then
         local p = {}
         for _, k in ipairs(v.Keypoints) do
-            p[#p+1] = ("ColorSequenceKeypoint.new(%g,Color3.fromRGB(%d,%d,%d))"):format(
-                k.Time, math.round(k.Value.R*255),
-                math.round(k.Value.G*255), math.round(k.Value.B*255))
+            p[#p+1] = ("ColorSequenceKeypoint.new(%s,%s)"):format(num(k.Time), sv(k.Value))
         end
         return "ColorSequence.new({"..table.concat(p,",").."})"
     elseif t == "NumberSequence" then
         local p = {}
         for _, k in ipairs(v.Keypoints) do
-            p[#p+1] = ("NumberSequenceKeypoint.new(%g,%g,%g)"):format(
-                k.Time, k.Value, k.Envelope)
+            p[#p+1] = ("NumberSequenceKeypoint.new(%s,%s,%s)"):format(
+                num(k.Time), num(k.Value), num(k.Envelope or 0))
         end
         return "NumberSequence.new({"..table.concat(p,",").."})"
     elseif t == "EnumItem" then
         return tostring(v)
     elseif t == "Font" then
-        return ('Font.new("%s",Enum.FontWeight.%s,Enum.FontStyle.%s)'):format(
-            v.Family, v.Weight.Name, v.Style.Name)
+        return ('Font.new(%s,%s,%s)'):format(
+            ("%q"):format(v.Family), tostring(v.Weight), tostring(v.Style))
     end
     return nil
 end
 
 local GOB = {
     "Name","Visible","ZIndex","LayoutOrder","AutoLocalize","SelectionGroup",
-    "AnchorPoint","BackgroundColor3","BackgroundTransparency","BorderColor3",
-    "BorderSizePixel","BorderMode","ClipsDescendants","Interactable",
+    "Active","AutomaticSize","AnchorPoint","BackgroundColor3","BackgroundTransparency",
+    "BorderColor3","BorderSizePixel","BorderMode","ClipsDescendants","Interactable",
     "Position","Rotation","Size","SizeConstraint",
 }
 local TXT = {
@@ -241,6 +292,7 @@ local P = {
     VideoFrame         = mg(GOB, {
         "Looped","Playing","TimePosition","Video","Volume"
     }),
+    CanvasGroup        = mg(GOB, {"GroupColor3","GroupTransparency"}),
     BillboardGui       = {
         "Name","Active","AlwaysOnTop","Brightness","ClipsDescendants",
         "DistanceLowerLimit","DistanceUpperLimit","ExtentsOffset",
@@ -289,6 +341,25 @@ local P = {
     ModuleScript       = {"Name"},
 }
 
+local scanRoots = {}
+do
+    local pg = lp:WaitForChild("PlayerGui")
+    for _, c in ipairs(pg:GetChildren()) do
+        if c ~= sGui then
+            scanRoots[#scanRoots + 1] = c
+        end
+    end
+    if INCLUDE_COREGUI and parentKind == "CoreGui" then
+        pcall(function()
+            for _, c in ipairs(guiParent:GetChildren()) do
+                if c ~= sGui then
+                    scanRoots[#scanRoots + 1] = c
+                end
+            end
+        end)
+    end
+end
+
 local function build()
     local objs = {}
     local function walk(inst, pidx)
@@ -296,32 +367,60 @@ local function build()
         objs[i] = {inst = inst, pidx = pidx, cn = inst.ClassName}
         for _, c in ipairs(inst:GetChildren()) do walk(c, i) end
     end
-    for _, c in ipairs(SG:GetChildren()) do walk(c, 0) end
+    for _, root in ipairs(scanRoots) do
+        pcall(walk, root, 0)
+    end
+    if #objs == 0 then
+        return "", 0
+    end
 
     local L = {
-        'local _sg=game:GetService("StarterGui")',
+        'local Players=game:GetService("Players")',
+        'local lp=Players.LocalPlayer',
+        'while not lp do Players:GetPropertyChangedSignal("LocalPlayer"):Wait() lp=Players.LocalPlayer end',
+        'local _pg=lp:WaitForChild("PlayerGui")',
         'local _cs=game:GetService("CollectionService")',
-        "local _o={}",
+        'local _o={}',
         "",
     }
 
     for i, d in ipairs(objs) do
+        if i % 50 == 0 then
+            task.wait()
+        end
         local inst = d.inst
-        L[#L+1] = ('_o[%d]=Instance.new("%s")'):format(i, d.cn)
-        for _, p in ipairs(P[d.cn] or {"Name"}) do
-            local ok, v = pcall(function() return inst[p] end)
-            if ok and v ~= nil then
-                local s = sv(v)
-                if s then L[#L+1] = ("_o[%d].%s=%s"):format(i, p, s) end
+        local okI = pcall(function() return inst.Name end)
+        if okI then
+            L[#L+1] = ('_o[%d]=Instance.new("%s")'):format(i, d.cn)
+            for _, p in ipairs(P[d.cn] or {"Name"}) do
+                local ok, v = pcall(function() return inst[p] end)
+                if ok and v ~= nil then
+                    local s = sv(v)
+                    if s then L[#L+1] = ("_o[%d].%s=%s"):format(i, p, s) end
+                end
             end
-        end
-        for _, tag in ipairs(CS:GetTags(inst)) do
-            L[#L+1] = ('_cs:AddTag(_o[%d],"%s")'):format(i, tag)
-        end
-        if d.pidx == 0 then
-            L[#L+1] = ("_o[%d].Parent=_sg"):format(i)
-        else
-            L[#L+1] = ("_o[%d].Parent=_o[%d]"):format(i, d.pidx)
+            local okA, attrs = pcall(function() return inst:GetAttributes() end)
+            if okA and type(attrs) == "table" then
+                for k, v in pairs(attrs) do
+                    local s = sv(v)
+                    if s then L[#L+1] = ('_o[%d]:SetAttribute(%s,%s)'):format(i, ("%q"):format(k), s) end
+                end
+            end
+            for _, tag in ipairs(CS:GetTags(inst)) do
+                L[#L+1] = ('_cs:AddTag(_o[%d],%s)'):format(i, ("%q"):format(tag))
+            end
+            if d.pidx == 0 then
+                if d.cn == "ScreenGui" then
+                    L[#L+1] = ('do local _e=_pg:FindFirstChild(%s) if _e then _e:Destroy() end end')
+                        :format(("%q"):format(tostring(inst.Name)))
+                end
+                L[#L+1] = ("_o[%d].Parent=_pg"):format(i)
+            else
+                L[#L+1] = ("_o[%d].Parent=_o[%d]"):format(i, d.pidx)
+            end
+            if d.cn == "LocalScript" or d.cn == "Script" then
+                L[#L+1] = ("_o[%d].Disabled=true"):format(i)
+            end
         end
         L[#L+1] = ""
     end
@@ -351,7 +450,7 @@ btnS.MouseButton1Click:Connect(function()
     info.Text = "Сканирование..."
     task.wait()
     local ok, code, count = pcall(build)
-    if ok then
+    if ok and count > 0 then
         result = code
         dot.BackgroundColor3 = Color3.fromRGB(78,205,118)
         info.Text = ("Собрано: %d объектов · %d симв."):format(count, #code)
@@ -368,6 +467,9 @@ btnS.MouseButton1Click:Connect(function()
         for i = 1, #code, N do
             print(code:sub(i, math.min(i+N-1, #code)))
         end
+    elseif ok then
+        dot.BackgroundColor3 = Color3.fromRGB(220,175,40)
+        info.Text = "GUI не найдены"
     else
         dot.BackgroundColor3 = Color3.fromRGB(220,68,68)
         info.Text = "Ошибка сбора"
@@ -377,7 +479,13 @@ end)
 
 btnCp.MouseButton1Click:Connect(function()
     if not result then return end
-    local ok = pcall(setclipboard, result)
+    local fn = (type(setclipboard) == "function" and setclipboard)
+        or (type(toclipboard) == "function" and toclipboard)
+        or nil
+    local ok = false
+    if fn then
+        ok = pcall(fn, result)
+    end
     local prev = btnCp.Text
     if ok then
         btnCp.Text = "✓  СКОПИРОВАНО"
